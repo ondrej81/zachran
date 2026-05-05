@@ -1,0 +1,37 @@
+# Local development config for `supabase start`. Production values are set in
+# the Supabase Studio dashboard.
+
+project_id = "rohlik-wishlist"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+# Auth is unused (single-tenant, basic-auth at the web layer). Keep enabled to
+# avoid Supabase Studio errors but no flows are wired up.
+enabled = true
+site_url = "http://localhost:3000"
+
+[storage]
+enabled = true
+file_size_limit = "5MiB"
+
+[edge_runtime]
+enabled = true
+inspector_port = 8083
+
+[functions.dispatch-alerts]
+verify_jwt = false

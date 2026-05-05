@@ -1,122 +1,161 @@
-# rohlik-alert
+# Rohlík hlídač slev
 
-Daily scraper + alerter for the **Zachraň a ušetři** (last-minute discount) page on
-[rohlik.cz](https://www.rohlik.cz/zachran-a-usetri). Tells you each morning whether
-any of your favorite products are on sale today, at the warehouse that serves your
-delivery address.
+A wife-friendly web app that watches https://www.rohlik.cz/zachran-a-usetri
+(last-minute discounts) and emails when any item from your wishlist is on sale
+today above your discount threshold. Hosted on Vercel + Supabase, scraped daily
+by a free GitHub Actions runner.
+
+## Architecture (one-liner)
+
+`Vercel (Next.js wishlist UI)` ⇄ `Supabase (Postgres + Storage + Edge Function)`
++ `GitHub Actions cron (Playwright scrape)` + `Resend (email)`.
+
+See [the full plan](/root/.claude/plans/let-s-do-it-more-merry-fairy.md) — or
+the section **Architecture** below.
+
+## Repo layout
+
+```
+web/        Next.js App Router (deployed to Vercel)
+supabase/   migrations + dispatch-alerts edge function
+scraper/    Python + Playwright scraper (run by GitHub Actions)
+.github/    daily-scrape.yml workflow
+```
+
+## First-time setup
+
+### 1. Supabase project
+
+1. Create a project at https://supabase.com.
+2. Push the migrations:
+   ```bash
+   pnpm dlx supabase login
+   pnpm dlx supabase link --project-ref <ref>
+   pnpm dlx supabase db push
+   ```
+3. Set two database settings used by `pg_cron`:
+   ```sql
+   alter database postgres set "app.functions_url" = 'https://<ref>.functions.supabase.co';
+   alter database postgres set "app.cron_secret"   = '<your CRON_SECRET>';
+   ```
+4. Deploy the Edge Function:
+   ```bash
+   pnpm dlx supabase functions deploy dispatch-alerts --no-verify-jwt
+   pnpm dlx supabase secrets set \
+     CRON_SECRET=... \
+     RESEND_API_KEY=re_... \
+     RESEND_FROM='Rohlík <alerts@yourdomain.cz>' \
+     APP_URL='https://your-app.vercel.app'
+   ```
+
+### 2. Vercel
+
+1. Import the repo, set the **Root Directory** to `web/`.
+2. Add the env vars from `web/.env.example`:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `APP_USERNAME` / `APP_PASSWORD` — credentials your wife will use
+   - `ADMIN_USERNAME` / `ADMIN_PASSWORD` — separate, husband-only
+   - `CRON_SECRET` — same value as in Supabase secrets
+
+### 3. Bootstrap the warehouse session (you, once)
+
+```bash
+cd scraper
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+playwright install chromium
+python rohlik_alert.py init      # Chromium opens; set your address; press Enter
+```
+
+This produces `scraper/storage_state.json`. Open
+`https://<your-app>.vercel.app/admin`, log in with `ADMIN_USERNAME/PASSWORD`,
+upload the file. The web app uploads it to a private Supabase Storage bucket
+and immediately runs a healthcheck. You'll see "Healthcheck: OK".
+
+### 4. GitHub Actions
+
+Add three repository secrets:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `CRON_SECRET`
+
+The workflow `.github/workflows/daily-scrape.yml` runs at 04:05 and 06:05 UTC
+(covering 06:05/07:05 Prague summer/winter). The Edge Function only emails at
+the user's `alert_hour`, so the two daily fires are deduped naturally.
+
+### 5. First settings
+
+Visit `https://<your-app>.vercel.app/settings`, fill in:
+
+- email for alerts (your wife's address)
+- preferred hour (Europe/Prague)
+- default discount % for new items
+
+Then visit `/`, paste a Rohlík product URL, confirm the preview, save.
 
 ## How it works
 
-The page is a Next.js SSR app. Each rendered HTML response embeds a React-Query
-dehydrated state inside `<script id="__NEXT_DATA__">` containing every
-`categoryType: "last-minute"` product card (id, name, slug, sale price, original
-price, sale text, expiration). The first ~14 items ship with the SSR; the rest
-load on scroll. The offer set depends on the warehouse Rohlík picks for your
-delivery address — so we persist a real browser session (cookies + localStorage)
-and reuse it.
+- **Add to wishlist.** `/api/preview` takes a Rohlík URL, regexes the product
+  ID out of the slug, fetches the page anonymously and parses `__NEXT_DATA__`
+  for `name` + `image.path` (with Open Graph tags as fallback). The browser
+  shows the preview and lets the wife pick a discount-% threshold before
+  saving.
+- **Daily scrape.** GitHub Actions downloads the warehouse session from
+  Supabase Storage, runs `scraper/rohlik_alert.py dump` (Playwright with
+  autoscroll on `/zachran-a-usetri`), and writes the result rows to
+  `last_minute_offers`. It then POSTs `dispatch-alerts` to fire the email
+  immediately.
+- **Email.** `dispatch-alerts` joins `wishlist_items` against
+  `last_minute_offers` for today's Prague date, filters by per-item
+  `min_discount_pct`, sends a single Resend digest, and inserts one
+  `alert_log` row per match. The PK on `(rohlik_product_id, alert_date)`
+  prevents duplicates if pg_cron re-fires later that hour.
 
-The scraper:
+## Maintenance
 
-1. opens the page in a headless Chromium that has the saved session,
-2. autoscrolls until the card grid stops growing,
-3. parses `__NEXT_DATA__`,
-4. matches every card name against your `favorites.txt` (accent- and
-   case-insensitive, multi-token AND-match),
-5. writes a Markdown report and (optionally) emails / sends a Telegram message.
+- **Session expiration.** Rohlík cookies live for weeks. The healthcheck on
+  `/admin` runs on every upload and on demand. If `healthcheck_ok=false`,
+  re-run `python rohlik_alert.py init` and re-upload.
+- **HTML drift.** The extractor in `scraper/rohlik_alert.py` walks the JSON
+  blob looking for `{productId, name}` nodes — it's resilient to most key
+  renames. If product counts plummet (`scrape_runs.product_count`), look at
+  `last_minute_offers.raw` for the new shape.
 
-## One-time setup
-
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-playwright install chromium
-
-cp favorites.example.txt favorites.txt
-$EDITOR favorites.txt          # one product-name fragment per line
-
-python3 rohlik_alert.py init   # opens Chromium; set delivery address, optionally log in
-                               # press Enter in the terminal once you're done
-```
-
-`init` writes `storage_state.json` (cookies + localStorage) which the daily run
-reuses, so the warehouse / address / login stay set indefinitely. Both files
-are git-ignored.
-
-## Daily run
+## Local development
 
 ```bash
-python3 rohlik_alert.py run
+# Supabase
+pnpm dlx supabase start         # local Postgres + Storage on :54321
+pnpm dlx supabase db reset      # apply migrations
+
+# Web
+cd web
+pnpm install
+pnpm dev                        # http://localhost:3000
+
+# Scraper (offline parse)
+cd scraper
+python rohlik_alert.py dump --from-file /tmp/rohlik.html
 ```
 
-Useful flags:
+## Files of interest
 
-| flag | effect |
+| Path | Purpose |
 | --- | --- |
-| `--dry-run` | print the report, skip notifications |
-| `--headed` | watch the browser (debug) |
-| `--no-browser` | skip Playwright; only the SSR first page (~14 items) |
-| `--scroll-rounds N` | cap autoscroll iterations (default 40) |
-
-Output:
-
-- stdout — full Markdown report
-- `reports/YYYY-MM-DD.md` — same report saved
-- exit code `0` if any favorite matched, `1` otherwise (handy for cron tooling)
-
-## Notifications (optional)
-
-Set any subset of these env vars; missing ones are skipped silently.
-
-```bash
-# email (SMTP with STARTTLS)
-export SMTP_HOST=smtp.gmail.com SMTP_PORT=587
-export SMTP_USER=you@example.com SMTP_PASS=app-password
-export ALERT_TO=you@example.com   # defaults to SMTP_USER
-
-# Telegram
-export TELEGRAM_BOT_TOKEN=12345:abc
-export TELEGRAM_CHAT_ID=987654321
-```
-
-The notifier only sends alerts for **new** matches it hasn't reported earlier on
-the same day (state in `.seen.json`), so you can run it more than once without
-spamming yourself.
-
-## Cron
-
-```cron
-30 7 * * *  cd /home/user/zachran && /home/user/zachran/.venv/bin/python rohlik_alert.py run >> reports/cron.log 2>&1
-```
-
-Or systemd-timer if you prefer; the script is a normal exit-code-emitting CLI.
-
-## Favorites format
-
-```
-# substring, accent- and case-insensitive
-# multi-word lines AND every token together
-maso veprovy
-hovezi nudlicky
-prazma
-losos
-```
-
-`maso veprovy` matches "MASO! Vepřový bok v celku s kůží" but not "MASO! Hovězí…".
-
-## Files
-
-| path | purpose |
-| --- | --- |
-| `rohlik_alert.py` | the CLI (no other source files) |
-| `favorites.txt` | your patterns (git-ignored) |
-| `storage_state.json` | saved browser session (git-ignored) |
-| `reports/` | per-day Markdown reports (git-ignored) |
-| `.seen.json` | dedup state for notifications (git-ignored) |
+| `web/middleware.ts` | HTTP basic-auth gate |
+| `web/app/page.tsx` | Wishlist UI |
+| `web/app/api/preview/route.ts` | URL → name + image |
+| `web/app/api/wishlist/route.ts` | CRUD |
+| `web/app/api/admin/session/route.ts` | upload `storage_state.json` |
+| `supabase/migrations/20260505_001_init.sql` | schema |
+| `supabase/functions/dispatch-alerts/index.ts` | match + email |
+| `scraper/rohlik_alert.py` | Playwright scraper |
+| `.github/workflows/daily-scrape.yml` | daily cron |
 
 ## Notes
 
-- `robots.txt` permits `/zachran-a-usetri`. Run once a day; don't hammer.
-- If Rohlík changes the embedded state shape, fix `extract_products` in
-  `rohlik_alert.py`. The logic walks every dict and picks up nodes that have
-  both `productId` and `name`, so minor refactors won't break it.
-- `storage_state.json` carries auth cookies. Never commit it.
+- `robots.txt` permits `/zachran-a-usetri`; we run once a day. Don't hammer.
+- `storage_state.json` carries login cookies — `.gitignore` keeps it out of
+  the repo, and Supabase Storage holds it in a private bucket.
