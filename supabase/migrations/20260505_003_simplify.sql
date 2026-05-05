@@ -31,14 +31,17 @@ drop table if exists public.warehouse_sessions;
 -- It's harmless if you skip this; just a few KB of unused storage.
 
 -- 5) Adjust the cron schedule from every 15 min → once per hour at :05.
---    With per-product fetches we don't want to thrash Rohlík between alert
---    hours; a single check at :05 of the alert_hour is enough.
+--    Direct UPDATE on cron.job is denied on Supabase (42501); use the
+--    cron.schedule() / cron.unschedule() API instead. We capture the existing
+--    command body (which holds your inlined FUNCTIONS_URL and CRON_SECRET
+--    from migration 002) and re-schedule it with the new cadence.
 do $$
 declare
-  jid bigint;
+  cmd text;
 begin
-  select jobid into jid from cron.job where jobname = 'dispatch-alerts';
-  if jid is not null then
-    update cron.job set schedule = '5 * * * *' where jobid = jid;
+  select command into cmd from cron.job where jobname = 'dispatch-alerts';
+  if cmd is not null then
+    perform cron.unschedule('dispatch-alerts');
+    perform cron.schedule('dispatch-alerts', '5 * * * *', cmd);
   end if;
 end $$;
