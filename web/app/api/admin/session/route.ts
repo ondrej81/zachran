@@ -3,9 +3,90 @@ import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 // PUT /api/admin/session — multipart form with a single field "file" containing
-// a fresh storage_state.json. Validates JSON shape, uploads to the private
-// "warehouse" Storage bucket, transactionally flips warehouse_sessions, runs
-// a healthcheck.
+// session data. Two formats are accepted:
+//
+//   1. Playwright storage_state.json shape:
+//      { "cookies": [{ name, value, domain, path, expires, httpOnly, secure, sameSite }, ...],
+//        "origins": [...] }
+//
+//   2. Cookie-Editor / EditThisCookie browser-extension JSON (a flat array of
+//      cookie objects with keys like expirationDate, sameSite: "lax", etc).
+//      The server normalises this into Playwright shape before storing.
+//
+// Format 2 lets a non-technical admin bootstrap the warehouse session without
+// running any terminal commands: install Cookie-Editor, log into rohlik.cz,
+// click Export → JSON, upload the file here.
+
+type CookieEditor = {
+  name: string;
+  value: string;
+  domain: string;
+  path?: string;
+  expirationDate?: number;
+  session?: boolean;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: string;
+};
+
+type PlaywrightCookie = {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "Strict" | "Lax" | "None";
+};
+
+const SAMESITE_MAP: Record<string, "Strict" | "Lax" | "None"> = {
+  strict: "Strict",
+  lax: "Lax",
+  none: "None",
+  no_restriction: "None",
+  unspecified: "Lax",
+};
+
+function normaliseCookie(c: CookieEditor): PlaywrightCookie {
+  const same = (c.sameSite ?? "lax").toLowerCase();
+  return {
+    name: c.name,
+    value: c.value,
+    domain: c.domain,
+    path: c.path ?? "/",
+    expires: c.session ? -1 : Math.round(c.expirationDate ?? -1),
+    httpOnly: !!c.httpOnly,
+    secure: !!c.secure,
+    sameSite: SAMESITE_MAP[same] ?? "Lax",
+  };
+}
+
+function coerceToPlaywrightShape(parsed: unknown):
+  | { cookies: PlaywrightCookie[]; origins: unknown[] }
+  | null {
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 0) return null;
+    if (typeof parsed[0]?.name !== "string") return null;
+    return {
+      cookies: parsed.map((c) => normaliseCookie(c as CookieEditor)),
+      origins: [],
+    };
+  }
+  if (parsed && typeof parsed === "object" && Array.isArray((parsed as any).cookies)) {
+    const obj = parsed as { cookies: any[]; origins?: any[] };
+    // already Playwright-ish; if it has Cookie-Editor field names, normalise.
+    const looksLikeCookieEditor =
+      obj.cookies[0] && ("expirationDate" in obj.cookies[0] || "session" in obj.cookies[0]);
+    return {
+      cookies: looksLikeCookieEditor
+        ? obj.cookies.map((c) => normaliseCookie(c as CookieEditor))
+        : (obj.cookies as PlaywrightCookie[]),
+      origins: obj.origins ?? [],
+    };
+  }
+  return null;
+}
 
 async function healthcheck(cookies: Array<{ name: string; value: string }>):
   Promise<{ ok: boolean; productCount: number }> {
@@ -21,7 +102,6 @@ async function healthcheck(cookies: Array<{ name: string; value: string }>):
   const html = await r.text();
   const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
   if (!m) return { ok: false, productCount: 0 };
-  // count "productId":N occurrences as a coarse signal
   const matches = html.match(/"productId":\d+/g) ?? [];
   const ids = new Set(matches);
   return { ok: ids.size >= 5, productCount: ids.size };
@@ -34,30 +114,32 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "missing file" }, { status: 400 });
   }
   const text = await file.text();
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
     return NextResponse.json({ error: "not valid JSON" }, { status: 400 });
   }
-  if (!Array.isArray(parsed?.cookies)) {
+  const shaped = coerceToPlaywrightShape(parsed);
+  if (!shaped) {
     return NextResponse.json(
-      { error: "missing cookies[] — is this a Playwright storage_state.json?" },
+      {
+        error: "expected either a Playwright storage_state.json " +
+          "({ cookies: [...] }) or a Cookie-Editor JSON export (an array of cookie objects)",
+      },
       { status: 400 },
     );
   }
 
   const sb = supabaseAdmin();
   const path = `${randomUUID()}.json`;
+  const blob = new Blob([JSON.stringify(shaped)], { type: "application/json" });
   const { error: upErr } = await sb.storage.from("warehouse").upload(
-    path,
-    new Blob([text], { type: "application/json" }),
+    path, blob,
     { contentType: "application/json", upsert: false },
   );
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-  // Flip current row → new row in two statements (no real transaction over PostgREST,
-  // but the partial unique index will reject any overlap).
   const { error: clrErr } = await sb
     .from("warehouse_sessions")
     .update({ is_current: false })
@@ -71,7 +153,7 @@ export async function PUT(req: Request) {
     .single();
   if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
 
-  const hc = await healthcheck(parsed.cookies);
+  const hc = await healthcheck(shaped.cookies);
   await sb
     .from("warehouse_sessions")
     .update({ healthcheck_ok: hc.ok, healthcheck_at: new Date().toISOString() })
@@ -81,7 +163,7 @@ export async function PUT(req: Request) {
     ok: true,
     healthcheckOk: hc.ok,
     productCount: hc.productCount,
-    cookieCount: parsed.cookies.length,
+    cookieCount: shaped.cookies.length,
     sessionId: row.id,
   });
 }

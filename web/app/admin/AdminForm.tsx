@@ -61,7 +61,7 @@ export default function AdminForm() {
           disabled={busy}
           className="rounded bg-rohlik-ink px-3 py-1.5 text-sm text-white disabled:opacity-50"
         >
-          Nahrát storage_state.json
+          Nahrát session JSON
         </button>
       </form>
       <button

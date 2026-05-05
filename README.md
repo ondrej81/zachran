@@ -15,10 +15,16 @@ the section **Architecture** below.
 
 ## Documentation
 
-- [`docs/SETUP.md`](docs/SETUP.md) — full deployment runbook (Supabase + Vercel + GitHub + first session)
+- [`docs/DEPLOY_NO_TERMINAL.md`](docs/DEPLOY_NO_TERMINAL.md) — **click-by-click deployment, no CLI required**
+- [`docs/SETUP.md`](docs/SETUP.md) — full deployment runbook for terminal users
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system diagram, data flows, schema reference
 - [`docs/UZIVATEL.md`](docs/UZIVATEL.md) — Czech end-user guide for the wife
 - [`scraper/README.md`](scraper/README.md) — how to refresh the warehouse session
+
+For a 100% browser-based setup, follow `DEPLOY_NO_TERMINAL.md` — the Edge
+Function deploys via a one-click GitHub Actions workflow
+(`.github/workflows/deploy-function.yml`) and the warehouse session is captured
+through the Cookie-Editor browser extension instead of Playwright.
 
 ## Repo layout
 
