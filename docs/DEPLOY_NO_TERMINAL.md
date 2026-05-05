@@ -73,57 +73,56 @@ Sidebar → **Database** → **Extensions**. Search for and enable:
 
 ### 2d. Wire up the cron schedule
 
-This step has two parts. **Do them in order.**
+You need two values for this step. Fetch them now:
 
-#### Find your project ref first
+- **PROJECT_REF** — find it under
+  **Settings → General → Reference ID** (also visible as the random ID
+  inside your dashboard URL: `https://supabase.com/dashboard/project/<ref>`).
+- **CRON_SECRET** — the long random string from your scratchpad (step 0).
 
-Your project ref is the random-looking ID Supabase assigned to your project. Two places to find it:
+Open `supabase/migrations/20260505_002_pg_cron.sql` on GitHub →
+click **Raw** → copy the whole file.
 
-- **Dashboard URL** — when you're inside your project, the browser address bar reads
-  `https://supabase.com/dashboard/project/abcdefghij1234567890` — the bit after
-  `/project/` is your ref (in this example, `abcdefghij1234567890`).
-- **Settings → General → Reference ID** — same value, easier to copy.
+Paste into a **new** SQL Editor query. Before clicking **Run**, do two
+find-and-replaces using the editor's built-in find/replace
+(press <kbd>Ctrl/Cmd-F</kbd>, then click the small ⇄ "replace" arrow on the
+right of the search box):
 
-Copy it to your scratchpad as **PROJECT_REF**.
+| Find | Replace with |
+| --- | --- |
+| `__FUNCTIONS_URL__` | `https://<PROJECT_REF>.functions.supabase.co` |
+| `__CRON_SECRET__` | your CRON_SECRET |
 
-#### Run two `alter database` lines
+Concrete example: if your project ref is `abcdefghij1234567890` and your
+CRON_SECRET is `d3a9c5b1e2f47a3c8fb9...`, then after the two replacements
+the cron body should contain:
 
-In the SQL Editor, paste the block below. Replace **the two placeholders only** —
-keep the single quotes, don't keep the angle brackets:
-
-```sql
-alter database postgres set "app.functions_url"
-  = 'https://<PROJECT_REF>.functions.supabase.co';
-alter database postgres set "app.cron_secret" = '<CRON_SECRET>';
+```
+url := 'https://abcdefghij1234567890.functions.supabase.co/dispatch-alerts',
+…
+'Authorization', 'Bearer d3a9c5b1e2f47a3c8fb9...'
 ```
 
-Concrete example (yours will look like this, but with your own values):
+Click **Run**. You should see "Success. No rows returned." (Two of them, one
+per `select` statement.)
+
+The first cron tick happens within 15 minutes; nothing visible changes
+immediately. To verify the job was registered, run:
 
 ```sql
-alter database postgres set "app.functions_url"
-  = 'https://abcdefghij1234567890.functions.supabase.co';
-alter database postgres set "app.cron_secret" = 'd3a9c5b1e2f47a3c8fb9...';
+select jobid, schedule, jobname from cron.job where jobname = 'dispatch-alerts';
 ```
 
-Click **Run**. You should see "Success. No rows returned."
+You should see one row.
 
-Sanity-check that the settings stuck:
+> **Heads up — why we don't use `alter database … set`.** Earlier versions of
+> this guide stored the URL and secret as database-level GUCs and read them
+> at runtime via `current_setting('app.*')`. The Supabase `postgres` role in
+> the SQL Editor doesn't have privilege to set custom database parameters
+> (you'd see `ERROR: 42501: permission denied to set parameter`), so we
+> inline the values directly into the cron job instead. The values live
+> only in the `cron.job` table, which only the project owner can read.
 
-```sql
-select current_setting('app.functions_url'),
-       current_setting('app.cron_secret');
-```
-
-You should see your two values returned. If you see
-`unrecognized configuration parameter`, the `alter database` didn't run — go
-back and double-check the spelling of `app.functions_url` and `app.cron_secret`.
-
-#### Then run the second migration
-
-Open `supabase/migrations/20260505_002_pg_cron.sql` on GitHub → **Raw** → copy →
-paste into a **new** SQL Editor query → **Run**. This installs the every-15-min
-cron job that calls your Edge Function. (The first cron tick happens within 15
-minutes; nothing visible changes immediately.)
 
 
 ### 2e. Save Edge Function secrets

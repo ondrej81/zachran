@@ -37,13 +37,11 @@ pnpm dlx supabase link --project-ref <ref-from-output>
 pnpm dlx supabase db push
 ```
 
-Then in the Supabase SQL editor:
-
-```sql
-alter database postgres set "app.functions_url"
-  = 'https://<ref>.functions.supabase.co';
-alter database postgres set "app.cron_secret" = '<CRON_SECRET>';
-```
+Then open `supabase/migrations/20260505_002_pg_cron.sql` and replace the two
+placeholders (`__FUNCTIONS_URL__`, `__CRON_SECRET__`) before running it. The
+file contains the substitution instructions in a comment header. Note: do
+NOT try to set these as database GUCs via `alter database postgres set …` —
+the Supabase `postgres` role isn't allowed to and it fails with `42501`.
 
 Deploy the Edge Function:
 
