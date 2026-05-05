@@ -23,9 +23,12 @@ drop table if exists public.last_minute_offers;
 drop table if exists public.scrape_runs;
 drop table if exists public.warehouse_sessions;
 
--- 4) Remove the warehouse storage bucket and any objects in it.
-delete from storage.objects where bucket_id = 'warehouse';
-delete from storage.buckets where id        = 'warehouse';
+-- 4) Note: the leftover `warehouse` storage bucket from v1 cannot be dropped
+-- from SQL — Supabase blocks direct deletion from storage.* tables. Clean it
+-- up manually after this migration finishes:
+--   Dashboard → Storage → warehouse bucket → select all objects → Delete →
+--   then click the bucket's ⋯ menu → Delete bucket.
+-- It's harmless if you skip this; just a few KB of unused storage.
 
 -- 5) Adjust the cron schedule from every 15 min → once per hour at :05.
 --    With per-product fetches we don't want to thrash Rohlík between alert
