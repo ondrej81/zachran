@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Personal session — contains your login cookies. Never commit.
+storage_state.json
+
+# Personal favorite list (copy favorites.example.txt to favorites.txt)
+favorites.txt
+
+# Generated
+reports/
+.seen.json
