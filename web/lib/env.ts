@@ -5,8 +5,6 @@ const Server = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
   APP_USERNAME: z.string().default("zena"),
   APP_PASSWORD: z.string().min(1),
-  ADMIN_USERNAME: z.string().default("admin"),
-  ADMIN_PASSWORD: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(8).optional(),
 });
 

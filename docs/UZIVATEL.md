@@ -29,9 +29,16 @@ U každé položky:
 ## Co vidím u každé položky
 
 - **„Dnes sleva −34 % · 79 Kč"** (žluté) – produkt je dnes ve slevě, sleva je
-  nad tvým minimem. Ráno ti přijde e-mail.
-- **„Dnes není ve slevě."** (šedé) – dnes není v sekci Zachraň a ušetři, nebo
-  je sleva pod tvojí hranicí.
+  nad tvým minimem. Ráno ti přijde e-mail. Klikni na badge a otevře se ti
+  produkt přímo s akční cenou.
+- **„Ve slevě jen −X %, pod tvojí hranicí."** – produkt je sice ve slevě, ale
+  menší než si přeješ. Můžeš snížit minimum kliknutím na **změnit**.
+- **„Dnes není ve slevě."** – dnes ne.
+- **„Kontrola se nezdařila"** (červené) – něco se rozbilo, napiš Ondrovi.
+
+Vlevo nahoře u seznamu je čas poslední kontroly. Tlačítkem **Aktualizovat**
+si můžeš vynutit novou kontrolu hned (e-mail se neodešle, jen se aktualizují
+údaje na stránce).
 
 ## Nastavení
 
@@ -57,9 +64,9 @@ Pokud žádná shoda není, e-mail ti nepřijde.
   obsahovat číslo (např. `1408933-...`).
 - **Náhled se nenačte** → produkt byl pravděpodobně z Rohlíku stažen. Zkus
   jiný odkaz.
-- **Nedostala jsem e-mail, ale produkt je ve slevě** → napiš Ondrovi.
-  Většinou jde o vypršenou „warehouse session" – musí znovu nahrát soubor
-  v admin sekci.
+- **Nedostala jsem e-mail, ale produkt je ve slevě** → klikni na
+  **Aktualizovat**. Pokud i pak chybí badge, napiš Ondrovi – nejspíš vypršely
+  cookies do Rohlíku.
 
 ## Tipy
 

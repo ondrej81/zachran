@@ -2,15 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { TodaysMatch, WishlistItem } from "@/lib/types";
+import type { WishlistItem } from "@/lib/types";
 
-type Props = { item: WishlistItem; match: TodaysMatch | null };
+function appendLm(url: string): string {
+  return url.includes("?") ? `${url}&lm=1` : `${url}?lm=1`;
+}
 
-export default function WishlistRow({ item, match }: Props) {
+export default function WishlistRow({ item }: { item: WishlistItem }) {
   const router = useRouter();
   const [pct, setPct] = useState(item.min_discount_pct);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+
+  const onSale =
+    item.last_sale_price !== null &&
+    item.last_discount_pct !== null;
+  const aboveThreshold =
+    onSale && item.last_discount_pct! >= item.min_discount_pct;
 
   async function patch(newPct: number) {
     setBusy(true);
@@ -61,23 +69,32 @@ export default function WishlistRow({ item, match }: Props) {
           {item.name}
         </a>
 
-        {match ? (
+        {aboveThreshold ? (
           <a
-            href={(match.url ?? item.source_url) +
-              ((match.url ?? item.source_url).includes("?") ? "&" : "?") + "lm=1"}
+            href={appendLm(item.source_url)}
             target="_blank"
             rel="noreferrer"
             className="mt-1 inline-block rounded bg-rohlik-yellow px-2 py-0.5 text-sm font-medium hover:underline"
           >
-            Dnes sleva −{match.discount_pct} % · {match.sale_price?.toFixed(2)} Kč
-            {match.original_price ? (
-              <span className="ml-2 text-gray-500 line-through">
-                {match.original_price.toFixed(2)} Kč
+            Dnes sleva −{item.last_discount_pct} % · {item.last_sale_price?.toFixed(2)} Kč
+            {item.last_original_price ? (
+              <span className="ml-2 text-gray-600 line-through">
+                {item.last_original_price.toFixed(2)} Kč
               </span>
             ) : null}
           </a>
-        ) : (
+        ) : onSale ? (
+          <div className="mt-1 text-sm text-gray-500">
+            Ve slevě jen −{item.last_discount_pct} %, pod tvojí hranicí.
+          </div>
+        ) : item.last_check_error ? (
+          <div className="mt-1 text-sm text-red-600">
+            Kontrola se nezdařila ({item.last_check_error}).
+          </div>
+        ) : item.last_check_at ? (
           <div className="mt-1 text-sm text-gray-500">Dnes není ve slevě.</div>
+        ) : (
+          <div className="mt-1 text-sm text-gray-400">Ještě nezkontrolováno.</div>
         )}
 
         {editing ? (
@@ -100,7 +117,10 @@ export default function WishlistRow({ item, match }: Props) {
             >
               Uložit
             </button>
-            <button onClick={() => { setEditing(false); setPct(item.min_discount_pct); }} className="text-gray-500">
+            <button
+              onClick={() => { setEditing(false); setPct(item.min_discount_pct); }}
+              className="text-gray-500"
+            >
               Zrušit
             </button>
           </div>
