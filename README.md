@@ -13,6 +13,13 @@ by a free GitHub Actions runner.
 See [the full plan](/root/.claude/plans/let-s-do-it-more-merry-fairy.md) — or
 the section **Architecture** below.
 
+## Documentation
+
+- [`docs/SETUP.md`](docs/SETUP.md) — full deployment runbook (Supabase + Vercel + GitHub + first session)
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system diagram, data flows, schema reference
+- [`docs/UZIVATEL.md`](docs/UZIVATEL.md) — Czech end-user guide for the wife
+- [`scraper/README.md`](scraper/README.md) — how to refresh the warehouse session
+
 ## Repo layout
 
 ```
