@@ -17,6 +17,12 @@ const escape = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+// Rohlík exposes the last-minute price view of a product via ?lm=1; without
+// it the regular (non-discounted) price often shows. Append the param so the
+// click-through lands on the discounted view.
+const lmUrl = (u: string | null) =>
+  !u ? null : `${u}${u.includes("?") ? "&" : "?"}lm=1`;
+
 const fmtCzk = (n: number | null) =>
   n == null ? "" : `${n.toFixed(2).replace(".", ",")} Kč`;
 
@@ -51,8 +57,9 @@ export function renderEmail(matches: Match[], appUrl: string): string {
         ? `<div style="color:#666;font-size:12px;margin-top:4px">`
           + `Sleva platí do ${escape(fmtDate(m.sale_valid_till))}</div>`
         : "";
-      const link = m.url
-        ? `<a href="${escape(m.url)}" style="color:#1C2529;text-decoration:none">`
+      const href = lmUrl(m.url);
+      const link = href
+        ? `<a href="${escape(href)}" style="color:#1C2529;text-decoration:none">`
         : "<span>";
       const linkClose = m.url ? "</a>" : "</span>";
       return `

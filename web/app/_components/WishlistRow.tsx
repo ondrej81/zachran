@@ -62,14 +62,20 @@ export default function WishlistRow({ item, match }: Props) {
         </a>
 
         {match ? (
-          <div className="mt-1 inline-block rounded bg-rohlik-yellow px-2 py-0.5 text-sm font-medium">
+          <a
+            href={(match.url ?? item.source_url) +
+              ((match.url ?? item.source_url).includes("?") ? "&" : "?") + "lm=1"}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-block rounded bg-rohlik-yellow px-2 py-0.5 text-sm font-medium hover:underline"
+          >
             Dnes sleva −{match.discount_pct} % · {match.sale_price?.toFixed(2)} Kč
             {match.original_price ? (
               <span className="ml-2 text-gray-500 line-through">
                 {match.original_price.toFixed(2)} Kč
               </span>
             ) : null}
-          </div>
+          </a>
         ) : (
           <div className="mt-1 text-sm text-gray-500">Dnes není ve slevě.</div>
         )}
