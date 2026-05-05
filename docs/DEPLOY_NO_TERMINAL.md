@@ -73,18 +73,58 @@ Sidebar → **Database** → **Extensions**. Search for and enable:
 
 ### 2d. Wire up the cron schedule
 
-Still in the SQL Editor, run **first** these two `alter database` lines —
-replace `<ref>` with your Supabase project ref (the part before `.supabase.co`
-in the URL of your dashboard) and `<CRON_SECRET>` with your scratchpad value:
+This step has two parts. **Do them in order.**
+
+#### Find your project ref first
+
+Your project ref is the random-looking ID Supabase assigned to your project. Two places to find it:
+
+- **Dashboard URL** — when you're inside your project, the browser address bar reads
+  `https://supabase.com/dashboard/project/abcdefghij1234567890` — the bit after
+  `/project/` is your ref (in this example, `abcdefghij1234567890`).
+- **Settings → General → Reference ID** — same value, easier to copy.
+
+Copy it to your scratchpad as **PROJECT_REF**.
+
+#### Run two `alter database` lines
+
+In the SQL Editor, paste the block below. Replace **the two placeholders only** —
+keep the single quotes, don't keep the angle brackets:
 
 ```sql
 alter database postgres set "app.functions_url"
-  = 'https://<ref>.functions.supabase.co';
+  = 'https://<PROJECT_REF>.functions.supabase.co';
 alter database postgres set "app.cron_secret" = '<CRON_SECRET>';
 ```
 
-Then run **the second migration** the same way you ran the first:
-`supabase/migrations/20260505_002_pg_cron.sql` → copy → paste → Run.
+Concrete example (yours will look like this, but with your own values):
+
+```sql
+alter database postgres set "app.functions_url"
+  = 'https://abcdefghij1234567890.functions.supabase.co';
+alter database postgres set "app.cron_secret" = 'd3a9c5b1e2f47a3c8fb9...';
+```
+
+Click **Run**. You should see "Success. No rows returned."
+
+Sanity-check that the settings stuck:
+
+```sql
+select current_setting('app.functions_url'),
+       current_setting('app.cron_secret');
+```
+
+You should see your two values returned. If you see
+`unrecognized configuration parameter`, the `alter database` didn't run — go
+back and double-check the spelling of `app.functions_url` and `app.cron_secret`.
+
+#### Then run the second migration
+
+Open `supabase/migrations/20260505_002_pg_cron.sql` on GitHub → **Raw** → copy →
+paste into a **new** SQL Editor query → **Run**. This installs the every-15-min
+cron job that calls your Edge Function. (The first cron tick happens within 15
+minutes; nothing visible changes immediately.)
+
 
 ### 2e. Save Edge Function secrets
 
